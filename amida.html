@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>あみだくじ</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #1a1a2e;
+    color: #eee;
+    font-family: 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+  }
+
+  h1 {
+    font-size: 2rem;
+    margin-bottom: 6px;
+    letter-spacing: 0.15em;
+    background: linear-gradient(90deg, #e96cff, #5eecff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    font-size: 0.85rem;
+    color: #888;
+    margin-bottom: 20px;
+  }
+
+  .controls {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 18px;
+  }
+
+  label { font-size: 0.9rem; color: #aaa; align-self: center; }
+
+  select, input[type=number] {
+    background: #16213e;
+    border: 1px solid #444;
+    color: #eee;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    width: 70px;
+  }
+
+  button {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    transition: transform 0.1s, opacity 0.2s;
+  }
+  button:active { transform: scale(0.96); }
+
+  #btnGenerate {
+    background: linear-gradient(135deg, #e96cff, #5eecff);
+    color: #1a1a2e;
+  }
+  #btnRevealAll {
+    background: #2a2a4e;
+    color: #ccc;
+    border: 1px solid #555;
+  }
+  #btnRevealAll:disabled { opacity: 0.4; cursor: default; }
+
+  .arena {
+    position: relative;
+    margin: 0 auto;
+  }
+
+  canvas {
+    display: block;
+  }
+
+  .labels-top, .labels-bottom {
+    display: flex;
+    justify-content: space-around;
+    width: 100%;
+  }
+
+  .label-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .label-top-name {
+    font-size: 0.85rem;
+    background: #16213e;
+    border: 1px solid #555;
+    border-radius: 6px;
+    padding: 4px 8px;
+    transition: background 0.2s, border-color 0.2s;
+    white-space: nowrap;
+  }
+  .label-item:hover .label-top-name {
+    background: #2a2a5e;
+    border-color: #5eecff;
+  }
+  .label-item.active .label-top-name {
+    background: #1a3a5e;
+    border-color: #e96cff;
+    color: #e96cff;
+  }
+  .label-item.revealed .label-top-name {
+    border-color: #5eecff;
+    color: #5eecff;
+  }
+
+  .label-bottom-name {
+    font-size: 0.85rem;
+    background: #16213e;
+    border: 1px solid #555;
+    border-radius: 6px;
+    padding: 4px 8px;
+    transition: background 0.3s;
+    white-space: nowrap;
+    opacity: 0;
+  }
+  .label-bottom-name.visible {
+    opacity: 1;
+    background: #1e3a2e;
+    border-color: #5eecff;
+    color: #5eecff;
+  }
+
+  .result-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  .result-overlay.show {
+    opacity: 1;
+    pointer-events: all;
+  }
+  .result-box {
+    background: #16213e;
+    border: 2px solid #e96cff;
+    border-radius: 16px;
+    padding: 32px 48px;
+    text-align: center;
+    box-shadow: 0 0 40px rgba(233, 108, 255, 0.4);
+  }
+  .result-box h2 { font-size: 1.2rem; color: #aaa; margin-bottom: 8px; }
+  .result-box .winner { font-size: 2.5rem; font-weight: bold; color: #e96cff; }
+  .result-box .prize { font-size: 1.5rem; color: #5eecff; margin-top: 6px; }
+  .result-box button {
+    margin-top: 20px;
+    background: #e96cff;
+    color: #1a1a2e;
+    padding: 10px 30px;
+    font-size: 1rem;
+  }
+
+  .hint { font-size: 0.78rem; color: #666; margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<h1>あみだくじ</h1>
+<p class="subtitle">参加者の名前をクリックしてルートを確認</p>
+
+<div class="controls">
+  <label>人数</label>
+  <select id="selCount">
+    <option>3</option>
+    <option selected>5</option>
+    <option>6</option>
+    <option>7</option>
+    <option>8</option>
+  </select>
+  <label>横棒密度</label>
+  <select id="selDensity">
+    <option value="0.3">少ない</option>
+    <option value="0.5" selected>普通</option>
+    <option value="0.7">多い</option>
+  </select>
+  <button id="btnGenerate">生成</button>
+  <button id="btnRevealAll" disabled>全員確認</button>
+</div>
+
+<div class="arena" id="arena">
+  <div class="labels-top" id="labelsTop"></div>
+  <canvas id="cvs"></canvas>
+  <div class="labels-bottom" id="labelsBottom"></div>
+</div>
+
+<p class="hint">※ 参加者の名前をダブルクリックで編集できます</p>
+
+<div class="result-overlay" id="resultOverlay">
+  <div class="result-box">
+    <h2>結果発表！</h2>
+    <div class="winner" id="resWinner"></div>
+    <div class="prize" id="resPrize"></div>
+    <button onclick="document.getElementById('resultOverlay').classList.remove('show')">閉じる</button>
+  </div>
+</div>
+
+<script>
+const cvs = document.getElementById('cvs');
+const ctx = cvs.getContext('2d');
+
+const NAMES_DEFAULT = ['Aさん','Bさん','Cさん','Dさん','Eさん','Fさん','Gさん','Hさん'];
+const PRIZES_DEFAULT = ['1等','2等','3等','4等','5等','6等','7等','8等'];
+
+let state = null; // { n, rungs, names, prizes, revealed[], animating }
+
+const MARGIN_X = 60;
+const MARGIN_Y = 0;
+const ROWS = 14;
+const LINE_COLOR = '#334';
+const RUNG_COLOR = '#445';
+const TRACE_COLOR_START = '#e96cff';
+const TRACE_COLOR_END = '#5eecff';
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpColor(c1, c2, t) {
+  const r1 = parseInt(c1.slice(1,3),16), g1=parseInt(c1.slice(3,5),16), b1=parseInt(c1.slice(5,7),16);
+  const r2 = parseInt(c2.slice(1,3),16), g2=parseInt(c2.slice(3,5),16), b2=parseInt(c2.slice(5,7),16);
+  const r=Math.round(lerp(r1,r2,t)), g=Math.round(lerp(g1,g2,t)), b=Math.round(lerp(b1,b2,t));
+  return `rgb(${r},${g},${b})`;
+}
+
+function getLayout() {
+  const n = state.n;
+  const w = cvs.width;
+  const h = cvs.height;
+  const xs = [];
+  for (let i=0; i<n; i++) xs.push(MARGIN_X + i*(w - 2*MARGIN_X)/(n-1));
+  const ys = [];
+  for (let r=0; r<=ROWS; r++) ys.push(MARGIN_Y + r*(h - 2*MARGIN_Y)/ROWS);
+  return { xs, ys, w, h };
+}
+
+function generateRungs(n, density) {
+  const rungs = []; // { row, col } means horizontal bar between col and col+1 at row
+  for (let row=1; row<ROWS; row++) {
+    let col=0;
+    while (col < n-1) {
+      if (Math.random() < density) {
+        rungs.push({ row, col });
+        col += 2; // skip adjacent to avoid crossing
+      } else {
+        col++;
+      }
+    }
+  }
+  return rungs;
+}
+
+function traceFrom(startCol) {
+  const { rungs } = state;
+  let col = startCol;
+  const path = [{ row: 0, col }];
+  for (let row=1; row<=ROWS; row++) {
+    // check for horizontal rung at (row-1 -> row transition), rungs at row
+    const rungHere = rungs.find(r => r.row === row && r.col === col);
+    const rungLeft = col > 0 ? rungs.find(r => r.row === row && r.col === col-1) : null;
+    if (rungHere) {
+      path.push({ row, col, move: 'right' });
+      col = col + 1;
+    } else if (rungLeft) {
+      path.push({ row, col, move: 'left' });
+      col = col - 1;
+    } else {
+      path.push({ row, col });
+    }
+  }
+  return path;
+}
+
+function drawBase() {
+  const { xs, ys, w, h } = getLayout();
+  ctx.clearRect(0, 0, w, h);
+
+  // vertical lines
+  ctx.strokeStyle = LINE_COLOR;
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  for (let i=0; i<state.n; i++) {
+    ctx.beginPath();
+    ctx.moveTo(xs[i], ys[0]);
+    ctx.lineTo(xs[i], ys[ROWS]);
+    ctx.stroke();
+  }
+
+  // rungs
+  ctx.strokeStyle = RUNG_COLOR;
+  ctx.lineWidth = 3;
+  for (const { row, col } of state.rungs) {
+    ctx.beginPath();
+    ctx.moveTo(xs[col], ys[row]);
+    ctx.lineTo(xs[col+1], ys[row]);
+    ctx.stroke();
+  }
+}
+
+function drawTrace(path, progress) {
+  const { xs, ys } = getLayout();
+  const totalSegs = path.length - 1;
+  const drawn = progress * totalSegs;
+
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  for (let s=0; s<totalSegs; s++) {
+    if (drawn <= s) break;
+    const t = Math.min(drawn - s, 1);
+    const from = path[s];
+    const to   = path[s+1];
+
+    const colorT = (s + t) / totalSegs;
+    ctx.strokeStyle = lerpColor(TRACE_COLOR_START, TRACE_COLOR_END, colorT);
+    ctx.lineWidth = 5;
+    ctx.shadowColor = ctx.strokeStyle;
+    ctx.shadowBlur = 12;
+
+    const x1 = xs[from.col];
+    const y1 = ys[from.row];
+    const x2 = xs[to.col];
+    const y2 = ys[to.row];
+
+    if (from.col !== to.col) {
+      // horizontal move — draw along rung row
+      ctx.beginPath();
+      ctx.moveTo(x1, y2);
+      ctx.lineTo(lerp(x1, x2, t), y2);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x1, lerp(y1, y2, t));
+      ctx.stroke();
+    }
+  }
+  ctx.shadowBlur = 0;
+}
+
+function animate(path, onDone) {
+  const duration = 1200;
+  const start = performance.now();
+  function frame(now) {
+    const t = Math.min((now - start) / duration, 1);
+    const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
+    drawBase();
+    drawTrace(path, ease);
+    if (t < 1) {
+      requestAnimationFrame(frame);
+    } else {
+      state.animating = false;
+      onDone();
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+function buildUI() {
+  const { n, names, prizes } = state;
+  const topDiv = document.getElementById('labelsTop');
+  const botDiv = document.getElementById('labelsBottom');
+  topDiv.innerHTML = '';
+  botDiv.innerHTML = '';
+
+  // figure canvas size
+  const maxW = Math.min(window.innerWidth - 48, 800);
+  const colSpan = Math.max(60, Math.floor((maxW - 2*MARGIN_X) / (n-1)));
+  const cvsW = MARGIN_X*2 + colSpan*(n-1);
+  const cvsH = 340;
+  cvs.width = cvsW;
+  cvs.height = cvsH;
+  cvs.style.width = cvsW + 'px';
+
+  document.getElementById('arena').style.width = cvsW + 'px';
+
+  // results mapping: startCol -> endCol
+  const destinations = [];
+  for (let i=0; i<n; i++) {
+    const path = traceFrom(i);
+    destinations.push(path[path.length-1].col);
+  }
+  state.destinations = destinations;
+
+  for (let i=0; i<n; i++) {
+    const item = document.createElement('div');
+    item.className = 'label-item';
+    item.dataset.idx = i;
+    item.style.width = (100/n) + '%';
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'label-top-name';
+    nameEl.textContent = names[i];
+    nameEl.title = 'クリックでルート確認 / ダブルクリックで編集';
+
+    nameEl.addEventListener('dblclick', () => {
+      const val = prompt('名前を入力:', state.names[i]);
+      if (val !== null && val.trim()) {
+        state.names[i] = val.trim();
+        nameEl.textContent = state.names[i];
+      }
+    });
+
+    item.appendChild(nameEl);
+    item.addEventListener('click', () => clickPlayer(i));
+    topDiv.appendChild(item);
+  }
+
+  // prizes at bottom — shuffled to destination index
+  const prizeOrder = new Array(n);
+  for (let i=0; i<n; i++) prizeOrder[destinations[i]] = prizes[i];
+
+  for (let i=0; i<n; i++) {
+    const item = document.createElement('div');
+    item.className = 'label-item';
+    item.dataset.col = i;
+    item.style.width = (100/n) + '%';
+
+    const prizeEl = document.createElement('div');
+    prizeEl.className = 'label-bottom-name';
+    prizeEl.textContent = prizeOrder[i];
+    prizeEl.id = 'prize-' + i;
+
+    item.appendChild(prizeEl);
+    botDiv.appendChild(item);
+  }
+
+  state.revealed = new Array(n).fill(false);
+  drawBase();
+}
+
+function clickPlayer(idx) {
+  if (state.animating) return;
+  if (state.revealed[idx]) return;
+  state.animating = true;
+
+  const topItems = document.querySelectorAll('#labelsTop .label-item');
+  topItems[idx].classList.add('active');
+
+  const path = traceFrom(idx);
+  const endCol = path[path.length-1].col;
+
+  animate(path, () => {
+    // show prize
+    const prizeEl = document.getElementById('prize-' + endCol);
+    prizeEl.classList.add('visible');
+    topItems[idx].classList.remove('active');
+    topItems[idx].classList.add('revealed');
+    state.revealed[idx] = true;
+
+    // show result popup
+    document.getElementById('resWinner').textContent = state.names[idx];
+    document.getElementById('resPrize').textContent = prizeEl.textContent;
+    document.getElementById('resultOverlay').classList.add('show');
+
+    // check if all revealed
+    if (state.revealed.every(Boolean)) {
+      document.getElementById('btnRevealAll').disabled = true;
+    }
+
+    drawBase();
+    // redraw all revealed traces faded
+    redrawRevealed();
+  });
+}
+
+function redrawRevealed() {
+  const { xs, ys } = getLayout();
+  for (let i=0; i<state.n; i++) {
+    if (!state.revealed[i]) continue;
+    const path = traceFrom(i);
+    ctx.globalAlpha = 0.25;
+    drawTrace(path, 1);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function generate() {
+  const n = parseInt(document.getElementById('selCount').value);
+  const density = parseFloat(document.getElementById('selDensity').value);
+
+  const names = NAMES_DEFAULT.slice(0, n).map((v, i) =>
+    (state && state.names[i]) ? state.names[i] : v
+  );
+  const prizes = PRIZES_DEFAULT.slice(0, n);
+
+  state = {
+    n, rungs: generateRungs(n, density),
+    names, prizes,
+    revealed: new Array(n).fill(false),
+    animating: false,
+    destinations: []
+  };
+
+  document.getElementById('btnRevealAll').disabled = false;
+  buildUI();
+}
+
+document.getElementById('btnGenerate').addEventListener('click', generate);
+
+document.getElementById('btnRevealAll').addEventListener('click', () => {
+  if (state.animating) return;
+  let delay = 0;
+  for (let i=0; i<state.n; i++) {
+    if (!state.revealed[i]) {
+      setTimeout(() => clickPlayer(i), delay);
+      delay += 1600;
+    }
+  }
+});
+
+// init
+generate();
+</script>
+</body>
+</html>
