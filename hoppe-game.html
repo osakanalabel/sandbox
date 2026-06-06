@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ほっぺゲーム</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: linear-gradient(135deg, #ffe0f0 0%, #fff0e0 100%);
+    font-family: 'Segoe UI', sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+  }
+  #hud {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background: rgba(255,255,255,0.7);
+    backdrop-filter: blur(6px);
+    z-index: 100;
+  }
+  #score-display { font-size: 1.4rem; font-weight: bold; color: #e05080; }
+  #lives-display { font-size: 1.4rem; }
+  #level-display { font-size: 1rem; color: #a0609a; font-weight: bold; }
+  #arena {
+    position: fixed;
+    top: 56px; left: 0; right: 0; bottom: 0;
+  }
+  .face {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    cursor: pointer;
+    animation: popIn 0.2s ease-out;
+  }
+  .face svg { width: 100%; height: 100%; }
+  .face .cheek-left, .face .cheek-right {
+    transition: fill 0.1s;
+    cursor: pointer;
+  }
+  .face:hover .cheek-left,
+  .face:hover .cheek-right { fill: #ff6090; }
+  .face .timer-ring {
+    transform-origin: center;
+    animation: shrink linear forwards;
+  }
+  @keyframes popIn {
+    from { transform: scale(0); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+  @keyframes popOut {
+    to { transform: scale(0); opacity: 0; }
+  }
+  @keyframes shrink {
+    from { stroke-dashoffset: 0; }
+    to   { stroke-dashoffset: 220; }
+  }
+  .popped {
+    animation: popOut 0.2s ease-in forwards;
+    pointer-events: none;
+  }
+  .score-pop {
+    position: absolute;
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #e05080;
+    pointer-events: none;
+    animation: floatUp 0.8s ease-out forwards;
+    z-index: 200;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  }
+  @keyframes floatUp {
+    from { transform: translateY(0); opacity: 1; }
+    to   { transform: translateY(-60px); opacity: 0; }
+  }
+  #overlay {
+    position: fixed; inset: 0;
+    background: rgba(255,200,220,0.85);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 300;
+    backdrop-filter: blur(4px);
+  }
+  #overlay h1 { font-size: 3rem; color: #e05080; margin-bottom: 0.5rem; }
+  #overlay .sub { font-size: 1.2rem; color: #a05070; margin-bottom: 2rem; }
+  #overlay .final-score { font-size: 2rem; font-weight: bold; color: #c03060; margin-bottom: 1.5rem; }
+  #start-btn {
+    padding: 14px 48px;
+    font-size: 1.4rem;
+    background: #e05080;
+    color: white;
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(224,80,128,0.4);
+    transition: transform 0.1s;
+  }
+  #start-btn:hover { transform: scale(1.05); }
+  #start-btn:active { transform: scale(0.97); }
+  #combo-display {
+    position: fixed;
+    top: 60px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #e05080;
+    z-index: 150;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  #combo-display.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div id="score-display">⭐ <span id="score">0</span></div>
+  <div id="level-display">Lv.<span id="level">1</span></div>
+  <div id="lives-display"><span id="lives">❤️❤️❤️</span></div>
+</div>
+
+<div id="arena"></div>
+<div id="combo-display" id="combo-display"></div>
+
+<div id="overlay">
+  <h1>ほっぺゲーム</h1>
+  <div class="sub">ほっぺをタップして点を稼ごう！</div>
+  <div class="final-score" id="final-score" style="display:none"></div>
+  <button id="start-btn">スタート！</button>
+</div>
+
+<script>
+const arena = document.getElementById('arena');
+const scoreEl = document.getElementById('score');
+const livesEl = document.getElementById('lives');
+const levelEl = document.getElementById('level');
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('start-btn');
+const finalScore = document.getElementById('final-score');
+const comboDisplay = document.getElementById('combo-display');
+
+let score = 0, lives = 3, level = 1, combo = 0;
+let spawnInterval, comboTimer;
+let running = false;
+const maxFaces = 8;
+let activeCount = 0;
+
+const FACES = ['😊','😄','🥰','😁','🤩','😇','😋','🥳'];
+
+function getSpawnDelay() {
+  return Math.max(400, 1400 - (level - 1) * 120);
+}
+function getLifetime() {
+  return Math.max(1200, 3000 - (level - 1) * 200);
+}
+
+function makeFaceEl() {
+  const size = 72;
+  const r = 30;
+  const cx = 36, cy = 36;
+  const circumference = 2 * Math.PI * r;
+
+  const el = document.createElement('div');
+  el.className = 'face';
+  el.style.width = el.style.height = size + 'px';
+
+  const lifetime = getLifetime();
+  el.innerHTML = `
+    <svg viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff9f0" stroke="#f0c0d0" stroke-width="2"/>
+      <circle class="cheek-left"  cx="20" cy="42" r="9" fill="#ffb0c8" opacity="0.8"/>
+      <circle class="cheek-right" cx="52" cy="42" r="9" fill="#ffb0c8" opacity="0.8"/>
+      <text x="36" y="41" text-anchor="middle" dominant-baseline="middle" font-size="20">${FACES[Math.floor(Math.random()*FACES.length)]}</text>
+      <circle class="timer-ring" cx="${cx}" cy="${cy}" r="${r-3}"
+        fill="none" stroke="#e05080" stroke-width="3" opacity="0.5"
+        stroke-dasharray="${circumference}"
+        stroke-dashoffset="0"
+        stroke-linecap="round"
+        transform="rotate(-90 ${cx} ${cy})"
+        style="animation-duration:${lifetime}ms"
+      />
+    </svg>`;
+
+  const arenaRect = arena.getBoundingClientRect();
+  const pad = 20;
+  el.style.left = pad + Math.random() * (arenaRect.width  - size - pad*2) + 'px';
+  el.style.top  = pad + Math.random() * (arenaRect.height - size - pad*2) + 'px';
+
+  let clicked = false;
+  function dismiss(hit) {
+    if (clicked) return;
+    clicked = true;
+    activeCount--;
+    el.classList.add('popped');
+    el.addEventListener('animationend', () => el.remove());
+    if (!hit) {
+      loseLife();
+    }
+  }
+
+  // click on cheeks or face
+  el.addEventListener('click', (e) => {
+    if (!running || clicked) return;
+    e.stopPropagation();
+    dismiss(true);
+    addScore(el);
+  });
+
+  // timeout
+  const tid = setTimeout(() => { if (!clicked) dismiss(false); }, lifetime);
+  el.dataset.tid = tid;
+
+  return el;
+}
+
+function addScore(el) {
+  combo++;
+  clearTimeout(comboTimer);
+  comboTimer = setTimeout(() => {
+    combo = 0;
+    comboDisplay.classList.remove('show');
+  }, 1200);
+
+  const pts = combo >= 5 ? 3 : combo >= 3 ? 2 : 1;
+  score += pts;
+  scoreEl.textContent = score;
+
+  // level up
+  const newLevel = Math.floor(score / 10) + 1;
+  if (newLevel > level) {
+    level = newLevel;
+    levelEl.textContent = level;
+    if (spawnInterval) {
+      clearInterval(spawnInterval);
+      startSpawning();
+    }
+  }
+
+  // floating score
+  const pop = document.createElement('div');
+  pop.className = 'score-pop';
+  pop.textContent = combo >= 3 ? `+${pts} 🔥` : `+${pts}`;
+  pop.style.left = el.style.left;
+  pop.style.top  = el.style.top;
+  arena.appendChild(pop);
+  pop.addEventListener('animationend', () => pop.remove());
+
+  if (combo >= 3) {
+    comboDisplay.textContent = `${combo} COMBO! 🎉`;
+    comboDisplay.classList.add('show');
+  }
+}
+
+function loseLife() {
+  lives--;
+  const hearts = ['❤️'.repeat(lives), lives === 0 ? '💔' : ''].join('') || '💔';
+  livesEl.textContent = lives > 0 ? '❤️'.repeat(lives) : '💔';
+  if (lives <= 0) gameOver();
+}
+
+function startSpawning() {
+  const spawn = () => {
+    if (!running) return;
+    if (activeCount < maxFaces) {
+      activeCount++;
+      arena.appendChild(makeFaceEl());
+    }
+  };
+  spawn();
+  spawnInterval = setInterval(spawn, getSpawnDelay());
+}
+
+function startGame() {
+  score = 0; lives = 3; level = 1; combo = 0; activeCount = 0;
+  scoreEl.textContent = '0';
+  livesEl.textContent = '❤️❤️❤️';
+  levelEl.textContent = '1';
+  comboDisplay.classList.remove('show');
+  arena.innerHTML = '';
+  overlay.style.display = 'none';
+  running = true;
+  startSpawning();
+}
+
+function gameOver() {
+  running = false;
+  clearInterval(spawnInterval);
+  setTimeout(() => {
+    overlay.style.display = 'flex';
+    finalScore.style.display = 'block';
+    finalScore.textContent = `スコア：${score} 点`;
+    startBtn.textContent = 'もう一度！';
+    document.querySelector('#overlay h1').textContent = 'ゲームオーバー';
+    document.querySelector('#overlay .sub').textContent = 'お疲れさまでした！';
+  }, 400);
+}
+
+startBtn.addEventListener('click', startGame);
+</script>
+</body>
+</html>
