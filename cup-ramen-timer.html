@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>カップラーメンタイマー</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: linear-gradient(135deg, #2b1a12, #4a2c1a);
+    color: #fff;
+    font-family: 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+  h1 {
+    font-size: 1.8rem;
+    margin-bottom: 30px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+  #timer-display {
+    font-size: 6rem;
+    font-weight: bold;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 30px rgba(255,150,50,0.6);
+    margin-bottom: 30px;
+    transition: color 0.3s;
+  }
+  #ring-wrap {
+    position: relative;
+    width: 280px;
+    height: 280px;
+    margin-bottom: 30px;
+  }
+  #ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  #ring-bg { fill: none; stroke: rgba(255,255,255,0.1); stroke-width: 12; }
+  #ring-fg {
+    fill: none;
+    stroke: #ff8c42;
+    stroke-width: 12;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.3s linear, stroke 0.3s;
+  }
+  #ring-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  #noodle-emoji { font-size: 3rem; }
+  .controls {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  button {
+    padding: 14px 28px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.2s;
+  }
+  button:active { transform: scale(0.95); }
+  #start-btn { background: #ff8c42; color: #fff; box-shadow: 0 4px 16px rgba(255,140,66,0.5); }
+  #pause-btn { background: #555; color: #fff; }
+  #reset-btn { background: #333; color: #ccc; }
+  #test-btn { background: #4a90d9; color: #fff; font-size: 0.9rem; padding: 10px 20px; }
+  .controls button:hover { transform: scale(1.05); }
+  #status {
+    margin-top: 16px;
+    font-size: 0.95rem;
+    color: #ffd9a0;
+    min-height: 1.2em;
+  }
+
+  /* Celebration overlay */
+  #celebration {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    background: radial-gradient(circle, rgba(255,200,50,0.95), rgba(255,80,30,0.95));
+    animation: flashBg 0.4s infinite alternate;
+  }
+  @keyframes flashBg {
+    from { filter: brightness(1); }
+    to   { filter: brightness(1.4); }
+  }
+  #celebration.show { display: flex; }
+  #celebration-text {
+    font-size: 4rem;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 0 20px #ff3300, 0 0 40px #ffcc00;
+    text-align: center;
+    animation: bounceText 0.6s ease-in-out infinite;
+    z-index: 1002;
+  }
+  @keyframes bounceText {
+    0%, 100% { transform: scale(1) rotate(-2deg); }
+    50% { transform: scale(1.15) rotate(2deg); }
+  }
+  #close-celebration {
+    position: absolute;
+    bottom: 60px;
+    padding: 14px 36px;
+    font-size: 1.1rem;
+    background: #fff;
+    color: #c04000;
+    border-radius: 50px;
+    border: none;
+    cursor: pointer;
+    z-index: 1002;
+    font-weight: bold;
+  }
+  .confetti {
+    position: absolute;
+    top: -10px;
+    width: 12px;
+    height: 12px;
+    opacity: 0.95;
+    animation: fall linear forwards;
+    z-index: 1001;
+  }
+  @keyframes fall {
+    to { transform: translateY(110vh) rotate(720deg); opacity: 0.3; }
+  }
+</style>
+</head>
+<body>
+
+<h1>🍜 カップラーメンタイマー</h1>
+
+<div id="ring-wrap">
+  <svg viewBox="0 0 200 200">
+    <circle id="ring-bg" cx="100" cy="100" r="90"></circle>
+    <circle id="ring-fg" cx="100" cy="100" r="90"
+      stroke-dasharray="565.48" stroke-dashoffset="0"></circle>
+  </svg>
+  <div id="ring-center">
+    <div id="noodle-emoji">🍜</div>
+    <div id="timer-display">3:00</div>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="start-btn">スタート</button>
+  <button id="pause-btn">一時停止</button>
+  <button id="reset-btn">リセット</button>
+</div>
+<div id="status">お湯を入れてスタート！</div>
+<button id="test-btn">テスト用：5秒タイマー</button>
+
+<div id="celebration">
+  <div id="celebration-text">できあがり！<br>🍜🎉🔥</div>
+  <button id="close-celebration">閉じる</button>
+</div>
+
+<script>
+const ringFg = document.getElementById('ring-fg');
+const display = document.getElementById('timer-display');
+const startBtn = document.getElementById('start-btn');
+const pauseBtn = document.getElementById('pause-btn');
+const resetBtn = document.getElementById('reset-btn');
+const testBtn = document.getElementById('test-btn');
+const statusEl = document.getElementById('status');
+const celebration = document.getElementById('celebration');
+const closeCelebration = document.getElementById('close-celebration');
+
+const FULL_DASH = 565.48;
+let DEFAULT_TIME = 180; // 3 minutes
+let totalTime = DEFAULT_TIME;
+let remaining = DEFAULT_TIME;
+let intervalId = null;
+let running = false;
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function updateDisplay() {
+  display.textContent = formatTime(remaining);
+  const ratio = remaining / totalTime;
+  ringFg.style.strokeDashoffset = FULL_DASH * (1 - ratio);
+  if (remaining <= 10 && remaining > 0) {
+    ringFg.style.stroke = '#ff3030';
+    display.style.color = '#ff5050';
+  } else {
+    ringFg.style.stroke = '#ff8c42';
+    display.style.color = '#fff';
+  }
+}
+
+function tick() {
+  remaining--;
+  if (remaining <= 0) {
+    remaining = 0;
+    updateDisplay();
+    stopTimer();
+    triggerCelebration();
+    return;
+  }
+  updateDisplay();
+}
+
+function startTimer() {
+  if (running || remaining <= 0) return;
+  running = true;
+  statusEl.textContent = '待ち中...完成までお待ちください';
+  intervalId = setInterval(tick, 1000);
+}
+
+function stopTimer() {
+  running = false;
+  clearInterval(intervalId);
+  intervalId = null;
+}
+
+function resetTimer(newTotal) {
+  stopTimer();
+  totalTime = newTotal !== undefined ? newTotal : DEFAULT_TIME;
+  remaining = totalTime;
+  statusEl.textContent = 'お湯を入れてスタート！';
+  updateDisplay();
+}
+
+startBtn.addEventListener('click', startTimer);
+pauseBtn.addEventListener('click', () => {
+  stopTimer();
+  statusEl.textContent = '一時停止中';
+});
+resetBtn.addEventListener('click', () => resetTimer());
+testBtn.addEventListener('click', () => resetTimer(5));
+
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = ctx.currentTime;
+    [0, 0.25, 0.5, 0.75].forEach((t, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = i % 2 === 0 ? 880 : 1100;
+      gain.gain.setValueAtTime(0.25, now + t);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + t + 0.2);
+      osc.start(now + t);
+      osc.stop(now + t + 0.25);
+    });
+  } catch (e) { /* audio not available */ }
+}
+
+function spawnConfetti() {
+  const colors = ['#ff3030', '#ffcc00', '#42d9ff', '#ff8c42', '#7cff6b', '#ff5fd6'];
+  for (let i = 0; i < 120; i++) {
+    const c = document.createElement('div');
+    c.className = 'confetti';
+    c.style.left = Math.random() * 100 + 'vw';
+    c.style.background = colors[Math.floor(Math.random() * colors.length)];
+    c.style.width = c.style.height = (6 + Math.random() * 10) + 'px';
+    c.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+    const duration = 2 + Math.random() * 2;
+    c.style.animationDuration = duration + 's';
+    c.style.animationDelay = (Math.random() * 0.5) + 's';
+    celebration.appendChild(c);
+    setTimeout(() => c.remove(), (duration + 1) * 1000);
+  }
+}
+
+function triggerCelebration() {
+  statusEl.textContent = 'できあがり！';
+  celebration.classList.add('show');
+  spawnConfetti();
+  playBeep();
+  let confettiTimer = setInterval(spawnConfetti, 800);
+  closeCelebration.onclick = () => {
+    celebration.classList.remove('show');
+    clearInterval(confettiTimer);
+    resetTimer();
+  };
+}
+
+updateDisplay();
+</script>
+</body>
+</html>
